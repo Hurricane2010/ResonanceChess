@@ -160,14 +160,21 @@ class CharismaChess:
         return None
 
     def _parse_move_from_text(self, text):
-        """Parse SAN, UCI, or '@tag <uci>' formatted move."""
+        """Parse SAN, UCI, or fantasy-formatted move."""
         t = text.strip()
         uci_tok = self._extract_move_token(t)
         if uci_tok:
             try:
+                # Try normal parsing first
                 return chess.Move.from_uci(uci_tok), True
             except ValueError:
-                pass
+                # Even if illegal, we still construct a dummy Move object manually
+                try:
+                    from_sq = chess.parse_square(uci_tok[:2])
+                    to_sq = chess.parse_square(uci_tok[2:4])
+                    return chess.Move(from_sq, to_sq), True
+                except Exception:
+                    return None, False
         try:
             return self.board.parse_san(t), False
         except ValueError:
@@ -175,6 +182,7 @@ class CharismaChess:
                 return self.board.parse_uci(t), True
             except ValueError:
                 return None, False
+
 
     # ---------------- Fantasy move handler ----------------
     def _force_fantasy_move(self, move):
