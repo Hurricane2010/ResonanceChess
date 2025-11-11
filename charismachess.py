@@ -24,6 +24,21 @@ class PieceProfile:
     def average(self):
         return (self.loyalty + self.motivation + self.morale + self.trust + self.empathy) / 5
 
+    def resolve_refusal(self):
+        """Returns a tuple (refuses: bool, message: str)."""
+        if self.loyalty < 15 or self.trust < 15 or self.morale < 15:
+            return True, "The soldier bows his head — loyalty shattered beyond command."
+
+        deficit = sum(max(0, 30 - getattr(self, stat)) for stat in ("loyalty", "trust", "morale"))
+        refusal_chance = min(0.85, deficit / 90.0)
+        if random.random() < refusal_chance:
+            return True, "The soldier refuses — their spirit falters under doubt."
+        return False, ""
+
+    def qualifies_for_heroics(self):
+        score = (self.loyalty + self.trust + self.morale) / 3
+        return score >= 90
+
 
 # --------------------------------------
 # Cached Cloud Evaluator
@@ -156,6 +171,7 @@ class CharismaChess:
                 p.morale = max(0, min(100, p.morale + change))
                 p.trust = max(0, min(100, p.trust + change / 2))
                 p.motivation = max(0, min(100, p.motivation + change / 3))
+                p.loyalty = max(0, min(100, p.loyalty + change / 2.5))
                 if self.speech_counter % 4 == 0:
                     p.trust = max(0, p.trust - 2)
         if sentiment > 0.2:
@@ -187,6 +203,7 @@ class CharismaChess:
         prof.morale = max(0, min(100, prof.morale + change))
         prof.trust = max(0, min(100, prof.trust + change * 0.8))
         prof.motivation = max(0, min(100, prof.motivation + change * 0.6))
+        prof.loyalty = max(0, min(100, prof.loyalty + change * 0.7))
         if self.speech_counter % 5 == 0:
             prof.trust = max(0, prof.trust - random.uniform(1, 4))
 
@@ -223,7 +240,30 @@ class CharismaChess:
             except ValueError:
                 return {"success": False, "message": "Invalid move format."}
 
+        piece = self.board.piece_at(move.from_square)
+        if not piece or piece.color != chess.WHITE:
+            return {"success": False, "message": "No ally stands ready for that command."}
+
+        prof = self.piece_profiles.get(move.from_square)
+        if prof:
+            refuses, note = prof.resolve_refusal()
+            if refuses:
+                prof.morale = max(0, prof.morale - random.uniform(2, 5))
+                prof.trust = max(0, prof.trust - random.uniform(3, 6))
+                return {"success": False, "refused": True,
+                        "message": f"{note} ({piece.symbol().upper()} on {chess.square_name(move.from_square).upper()})"}
+
         if move not in self.board.legal_moves:
+            if prof and prof.qualifies_for_heroics() and self.board.is_pseudo_legal(move):
+                self.apply_move_profiles(move, mover_color=chess.WHITE)
+                self.board.push(move)
+                prof.morale = max(0, min(100, prof.morale + random.uniform(3, 6)))
+                prof.trust = max(0, min(100, prof.trust + random.uniform(2, 4)))
+                prof.loyalty = max(0, min(100, prof.loyalty + random.uniform(1, 3)))
+                score = self.evaluate_position(self.board)
+                self.adjust_emotions(score, chess.WHITE)
+                return {"success": True, "message": f"White defied the book with {move.uci()} (heroic gamble!)",
+                        "heroic": True, "eval": score}
             return {"success": False, "message": "Illegal move."}
 
         if not self.is_move_safe(move):
@@ -436,6 +476,7 @@ class CharismaChessGUI:
             reply = self.game.enemy_move()
             self.log_message("Black", reply)
             self.update_board(); self.update_dashboard()
+            return
 
         # 2) Hesitated (unsafe)
         elif move_result.get("hesitated"):
@@ -445,57 +486,30 @@ class CharismaChessGUI:
             reply = self.game.enemy_move(force_black=True)
             self.log_message("Black", reply)
             self.update_board(); self.update_dashboard()
+            return
 
-        # 3) Broken morale
-        elif move_result.get("morale_broken"):
+        # 3) Refused to obey
+        elif move_result.get("refused"):
             self.log_message("Army", move_result["message"])
-            self.update_dashboard()
-
-        # 4) Invalid or illegal
-        elif "Illegal" in move_result.get("message", "") or "Invalid" in move_result.get("message", ""):
-            self.log_message("System", move_result["message"])
-            self.update_dashboard()
-
-        # 5) Otherwise treat as speech
-        else:
-            response = self.game.analyze_speech(text, chess.WHITE)
-            self.log_message("You", f"{text}\n→ {response}")
-            self.update_dashboard()
-
-
-        # --- SPEECH DETECTION ---
-        if text.startswith("@") or "address" in text.lower() or "talk to" in text.lower():
-            response = self.game.analyze_speech(text, chess.WHITE)
-            self.log_message("You", f"{text}\n→ {response}")
             self.update_dashboard()
             return
 
-        # --- MOVE PROCESSING ---
-        move_result = self.game.make_move(text)
-
-        if move_result.get("success"):
-            self.log_message("White", move_result["message"])
-            self.update_board()
-            self.update_dashboard()
-            reply = self.game.enemy_move()
-            self.log_message("Black", reply)
-            self.update_board()
-            self.update_dashboard()
-        elif move_result.get("hesitated"):
-            self.log_message("Army", move_result["message"])
-            self.log_message("System", "Your hesitation gave the enemy an opening!")
-            self.update_dashboard()
-            self.flash_enemy_advantage()
-            reply = self.game.enemy_move(force_black=True)
-            self.log_message("Black", reply)
-            self.update_board()
-            self.update_dashboard()
+        # 4) Broken morale
         elif move_result.get("morale_broken"):
             self.log_message("Army", move_result["message"])
             self.update_dashboard()
+            return
+
+        # 5) Invalid or illegal
         elif "Illegal" in move_result.get("message", "") or "Invalid" in move_result.get("message", ""):
             self.log_message("System", move_result["message"])
             self.update_dashboard()
+            return
+
+        # 6) Otherwise treat as speech
+        response = self.game.analyze_speech(text, chess.WHITE)
+        self.log_message("You", f"{text}\n→ {response}")
+        self.update_dashboard()
 
     def on_close(self):
         self.master.destroy()
