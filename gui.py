@@ -1,6 +1,6 @@
 import tkinter as tk
 import chess
-from game_engine.game_logic import CharismaChess, EmotionSystem
+from game_engine.game_logic import CharismaChess, EmotionSystem, SpeechSystem
 
 class CharismaChessGUI:
     def __init__(self, master):
@@ -135,7 +135,7 @@ class CharismaChessGUI:
         looks_like_tagged_uci = has_at and bool(__import__("re").search(r"[a-h][1-8][a-h][1-8][qrbn]?$", t, __import__("re").IGNORECASE))
 
         if has_at and not looks_like_tagged_uci:
-            r = self.game.analyze_speech(t, chess.WHITE)
+            r = self.game.speech.analyze_speech(t, chess.WHITE)
             self.log_message("You", f"{t}\n→ {r}")
             self.update_dashboard()
             return
