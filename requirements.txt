@@ -1,0 +1,4 @@
+python-chess
+textblob
+requests
+tk
