@@ -1,6 +1,6 @@
 import tkinter as tk
 import chess
-from game_logic import CharismaChess
+from game_engine.game_logic import CharismaChess, EmotionSystem
 
 class CharismaChessGUI:
     def __init__(self, master):
@@ -81,10 +81,10 @@ class CharismaChessGUI:
     def update_dashboard(self):
         g = self.game
         self.dashboard.delete("all")
-        morale = g.get_team_average(chess.WHITE, "morale")
-        trust  = g.get_team_average(chess.WHITE, "trust")
-        motivation = g.get_team_average(chess.WHITE, "motivation")
-        loyalty    = g.get_team_average(chess.WHITE, "loyalty")
+        morale = g.emotions.get_team_average(chess.WHITE, "morale")
+        trust  = g.emotions.get_team_average(chess.WHITE, "trust")
+        motivation = g.emotions.get_team_average(chess.WHITE, "motivation")
+        loyalty    = g.emotions.get_team_average(chess.WHITE, "loyalty")
 
         # Color/status
         if morale > 85 and trust > 75: label, col = "Inspired", "#4CAF50"

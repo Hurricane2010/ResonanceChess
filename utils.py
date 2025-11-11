@@ -1,4 +1,10 @@
 import requests, random
+import pygame
+import threading
+
+# Initialize pygame mixer safely once
+pygame.mixer.init()
+
 
 LICHESS_API_URL = "https://lichess.org/api/cloud-eval"
 
@@ -108,3 +114,27 @@ def _describe_stat(value, label, adjectives):
         return adjectives[2]
     else:
         return adjectives[3]
+    
+# ------------------ SOUND MANAGEMENT ------------------
+
+def play_background_music(file_path="background.mp3", volume=0.35):
+    """Plays background music in a loop without blocking GUI."""
+    def _bgm_thread():
+        try:
+            pygame.mixer.music.load(file_path)
+            pygame.mixer.music.set_volume(volume)
+            pygame.mixer.music.play(-1)  # loop indefinitely
+        except Exception as e:
+            print(f"[WARN] Could not play background music: {e}")
+    threading.Thread(target=_bgm_thread, daemon=True).start()
+
+
+def stop_background_music():
+    """Stops any playing background music."""
+    pygame.mixer.music.stop()
+
+
+def set_music_volume(volume: float):
+    """Adjusts current background volume (0.0–1.0)."""
+    pygame.mixer.music.set_volume(max(0.0, min(1.0, volume)))
+
